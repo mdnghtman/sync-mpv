@@ -111,7 +111,7 @@ def ready_when_seeked(mpv, value):
 def exit_gracefully():
     send(client_socket, "!DISCONNECT")
 
-def handle_server(server,addr):
+def handle_server(server, addr, MPV_PATH):
     global connected
     global t_playback
     global mpv
@@ -123,34 +123,26 @@ def handle_server(server,addr):
     t_restart = 0
     restart = 0
     connected = True
-    mpv = MPV(start_mpv=True, quit_callback=exit_gracefully)
+
+    operating_system_used = sys.platform
+
+    if operating_system_used == "win32":
+        while True:
+            try:
+                mpv = MPV(start_mpv=True, mpv_location=MPV_PATH, quit_callback=exit_gracefully)
+                break
+            except FileNotFoundError:
+                MPV_PATH = input("mpv binary not found. Please enter the correct path to mpv.exe : ").strip('"')
+                parser = ConfigParser()
+                parser.read(os.getenv('APPDATA')+"/sync-mpv/sync-mpv.conf")
+                parser.set('connection', 'mpv_path', MPV_PATH)
+                with open(os.getenv('APPDATA')+"/sync-mpv/sync-mpv.conf", 'w') as configfile:
+                    parser.write(configfile)
+    else:
+        mpv = MPV(start_mpv=True, quit_callback=exit_gracefully)
+    mpv.command("set_property","keep-open",True)    
     mpv.command("set_property","osd-font-size","18")
 
-#    @mpv.property_observer("paused-for-cache")
-#    def observe_playback_time(name, value):
-#        global restart
-#        if value == True:
-#            print("seek = true")
-#            restart+=1
-#            if restart == 4:
-#                restart = 0
-#                restart_url = mpv.command("get_property","path")
-#                skip_time = mpv.command("get_property","playback-time")
-#
-#                send(client_socket, "toggle play")
-#                mpv.play("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-#               
-#                mpv.play(restart_url)
-#                #ready_when_seeked(mpv, value)
-#                while True:
-#                    seek_bool = mpv.command("get_property","seeking")
-#                    if seek_bool == False:
-#                        pause_video(mpv)
-#                        break
-#                
-#                mpv.command("set_property","playback-time",skip_time)
-#                #new_video(mpv, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-                
     # observe playback-time to synchronize when user skips on timeline 
 
     @mpv.property_observer("playback-time")
@@ -241,6 +233,43 @@ def handle_server(server,addr):
         send(client_socket, "resync")
         ready_when_seeked(mpv, time_pos)
 
+    @mpv.on_key_press("kp7")
+    def printest():
+        send(client_socket, "zoom-out")
+        mpv.command('add', 'video-zoom', '-.25')
+
+    @mpv.on_key_press("kp9")
+    def printest():
+        send(client_socket, "zoom-in")
+        mpv.command('add', 'video-zoom', '.25')
+
+    @mpv.on_key_press("kp8")
+    def printest():
+        send(client_socket, "move-up")
+        mpv.command('add', 'video-pan-y', '.05')
+
+    @mpv.on_key_press("kp2")
+    def printest():
+        send(client_socket, "move-down")
+        mpv.command('add', 'video-pan-y', '-.05')
+
+    @mpv.on_key_press("kp4")
+    def printest():
+        send(client_socket, "move-left")
+        mpv.command('add', 'video-pan-x', '.05')
+
+    @mpv.on_key_press("kp6")
+    def printest():
+        send(client_socket, "move-right")
+        mpv.command('add', 'video-pan-x', '-.05')
+
+    @mpv.on_key_press("kp5")
+    def printest():
+        send(client_socket, "reset-window")
+        mpv.command('set', 'video-pan-y', '0')
+        mpv.command('set', 'video-pan-x', '0')
+        mpv.command('set', 'video-zoom', '0')
+
     print(f"[CONNECTION ESTABLISHED] to {addr}")
     
     while connected:
@@ -253,6 +282,33 @@ def handle_server(server,addr):
                 if msg == "!DISCONNECT":
                     connected = False
                     break
+
+                if msg == "zoom-in":
+                    mpv.command('add', 'video-zoom', '.25')
+                    mpv.command("show-text",f"{user} zooms in.","1500")
+
+                if msg == "zoom-out":
+                    mpv.command('add', 'video-zoom', '-.25')
+                    mpv.command("show-text",f"{user} zooms out.","1500")
+
+                if msg == "move-up":
+                    mpv.command('add', 'video-pan-y', '.05')
+                    mpv.command("show-text",f"{user} zooms in.","1500")
+
+                if msg == "move-down":
+                    mpv.command('add', 'video-pan-y', '-.05')
+
+                if msg == "move-right":
+                    mpv.command('add', 'video-pan-x', '-.05')
+
+                if msg == "move-left":
+                    mpv.command('add', 'video-pan-x', '.05')
+
+                if msg == "reset-window":
+                    mpv.command('set', 'video-pan-y', '0')
+                    mpv.command('set', 'video-pan-x', '0')
+                    mpv.command('set', 'video-zoom', '0')
+                    mpv.command("show-text",f"{user} resets the window.","1500")
 
                 if msg == "frame-step":
                     mpv.command('frame-step')
@@ -317,7 +373,6 @@ def handle_server(server,addr):
                 if "userconnected" in msg:
                     mpv.command("show-text",f"{msg.split(' ')[1]} connected.","1500")
 
-
         except IOError as e:
             if e.errno != errno.EAGAIN and e.errno != errno.EWOULDBLOCK:
                 print(e)
@@ -339,28 +394,34 @@ def handle_server(server,addr):
     client_socket.close()
 
 def parse_config(parser, configfile):
+    operating_system_used = sys.platform
 
     parser.read(configfile)
     IP = parser.get('connection', 'ip')
     PORT = parser.getint('connection', 'port')
     USERNAME = parser.get('connection', 'username')
     PASSWORD = parser.get('connection', 'password')
-    return IP, PORT, USERNAME, PASSWORD
+    MPV_PATH = parser.get('connection', 'mpv_path')
+    return IP, PORT, USERNAME, PASSWORD, MPV_PATH
 
 def initialize(parser, configfile):
-
+    operating_system_used = sys.platform
     IP = input("IP: ")
     PASSWORD = input("Password: ")
     USERNAME = input("Username: ")
+    if operating_system_used == "win32":
+        MPV_PATH = input("Path to mpv.exe : ").strip('"')
+    else:
+        MPV_PATH = "linux-binary"
     parser['connection'] = {
         'ip': IP,
         'port': '51984',
         'username': USERNAME,
         'password': PASSWORD,
+        'mpv_path': MPV_PATH
     }
     with open(configfile,"w") as f:
         parser.write(f)
-
 
 def main():
 
@@ -372,9 +433,14 @@ def main():
     FORMAT = 'utf-8'
     DISCONNECT_MESSAGE ="!DISCONNECT"
     
+    operating_system_used = sys.platform
 
-    configfolder = os.path.expanduser("~/.config/sync-mpv/")
-    configfile = os.path.expanduser("~/.config/sync-mpv/sync-mpv.conf")
+    if operating_system_used == "win32":
+        configfolder = os.getenv('APPDATA')+"/sync-mpv/"
+    else:
+        configfolder = os.path.expanduser("~/.config/sync-mpv/")
+
+    configfile = configfolder+"sync-mpv.conf"
 
     parser = ConfigParser()
 
@@ -383,13 +449,11 @@ def main():
     else:
         os.mkdir(configfolder)
 
-    if os.path.exists(configfile):
-        IP, PORT, USERNAME, PASSWORD = parse_config(parser, configfile)
-    else:
+    if not os.path.exists(configfile):
         initialize(parser, configfile)
-       
-    IP, PORT, USERNAME, PASSWORD = parse_config(parser, configfile)
 
+    IP, PORT, USERNAME, PASSWORD, MPV_PATH = parse_config(parser, configfile)
+    
     KEY = hashlib.sha256(PASSWORD.encode()).digest()
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -415,8 +479,7 @@ def main():
     client_socket.setblocking(True)
 
     send(client_socket, USERNAME)
-
-    handle_server(client_socket, (IP, PORT))
+    handle_server(client_socket, (IP, PORT), MPV_PATH) 
 
 if __name__ == "__main__":
     main()
