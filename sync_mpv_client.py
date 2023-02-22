@@ -164,7 +164,7 @@ def handle_server(server, addr, MPV_PATH):
 
     # when space pressed inform other clients of play/pause
 
-    @mpv.on_key_press("space")
+    @mpv.on_key_press("SPACE")
     def toggle_playback():
         toggle_play(mpv)
         send(client_socket, "toggle play")
