@@ -42,8 +42,6 @@ def pause_video(mpv):
     mpv.command("set_property","pause", True)
 
 def play_video(mpv):
-    global stop
-    stop = False
     mpv.command("set_property","pause", False)
 
 def toggle_play(mpv):
@@ -112,16 +110,7 @@ def exit_gracefully():
     send(client_socket, "!DISCONNECT")
 
 def handle_server(server, addr, MPV_PATH):
-    global connected
-    global t_playback
-    global mpv
-    global client_socket
-    global stop
-    global restart
-
     t_playback = 0
-    t_restart = 0
-    restart = 0
     connected = True
 
     operating_system_used = sys.platform
@@ -148,12 +137,10 @@ def handle_server(server, addr, MPV_PATH):
     @mpv.property_observer("playback-time")
     def observe_playback_time(name, value):  
         global t_playback  
-        global stop
         if value is not None:
             if value > t_playback+0.25 or value < t_playback-0.1:
 
                 if f"mpv skip {value}" != msg:
-                    stop = True
                     t_playback = mpv.command("get_property", "playback-time")
                     print (t_playback)
                     send(client_socket, f"mpv skip {t_playback}")
@@ -165,13 +152,11 @@ def handle_server(server, addr, MPV_PATH):
 
     @mpv.property_observer("path")
     def observe_path(name, value):
-        global stop
         print(name, value)
         if value is not None:
             print (f"New Path: {value}")
             print(msg)
-            if f"mpv new {value}" != msg:   
-                stop = True         
+            if f"mpv new {value}" != msg:       
                 send(client_socket, f"mpv new {value}")
                 new_video(mpv, value)
                 print("READY - PATH OBSERVED")
@@ -181,10 +166,8 @@ def handle_server(server, addr, MPV_PATH):
 
     @mpv.on_key_press("space")
     def toggle_playback():
-        global stop
-        if stop == False:
-            toggle_play(mpv)
-            send(client_socket, "toggle play")
+        toggle_play(mpv)
+        send(client_socket, "toggle play")
 
     # when q is pressed exit gracefully
 
@@ -204,7 +187,6 @@ def handle_server(server, addr, MPV_PATH):
     @mpv.on_key_press(".")
     def frame_step():
         send(client_socket, "frame-step")
-        #pause_video(mpv)
         mpv.command('frame-step')
 
     @mpv.on_key_press("-")
@@ -232,6 +214,29 @@ def handle_server(server, addr, MPV_PATH):
         send(client_socket, f"mpv skip {time_pos}")
         send(client_socket, "resync")
         ready_when_seeked(mpv, time_pos)
+
+    @mpv.on_key_press("h")
+    def help():
+        mpv.command("show-text", """sync-mpv keybindings
+
+Space           Toggle Play/Pause
+r                    resync clients
++/-                 Speed up/down the video
+.                     Go one frame forwards
+,                     Go one frame backwards
+q                    Quit sync-mpv
+
+Zoom:
+KP 7             Zoom out
+KP 9             Zoom in
+KP 8             Move panorama up
+KP 2             Move panorama down
+KP 4             Move panorama left
+KP 6             Move panorama right
+
+KP 5             Deactivate zoom and go back to normal view mode.
+"""            
+,5000)
 
     @mpv.on_key_press("kp7")
     def printest():
@@ -273,8 +278,6 @@ def handle_server(server, addr, MPV_PATH):
     print(f"[CONNECTION ESTABLISHED] to {addr}")
     
     while connected:
-        global stop
-
         try:
             msg, user = receive_message(server)
 
@@ -350,7 +353,6 @@ def handle_server(server, addr, MPV_PATH):
                     mpv.command("show-text",f"{user} toggles", "1500")
 
                 if "mpv skip" in msg:
-                    stop = True
                     t_playback = float(msg.split(" ")[2])
 
                     if t_playback < 3600:
@@ -364,7 +366,6 @@ def handle_server(server, addr, MPV_PATH):
                     ready_when_seeked(mpv, t_playback)
 
                 if "mpv new" in msg:
-                    stop = True
                     videopath = msg[8:]
                     new_video(mpv, videopath)
                     mpv.command("show-text",f"{user}: {videopath}","1500")
