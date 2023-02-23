@@ -168,6 +168,11 @@ def handle_server(server, addr, MPV_PATH):
     def toggle_playback():
         toggle_play(mpv)
         send(client_socket, "toggle play")
+        
+    @mpv.on_key_press("MBTN_RIGHT")
+    def toggle_playback():
+        toggle_play(mpv)
+        send(client_socket, "toggle play")  
 
     # when q is pressed exit gracefully
 
@@ -219,7 +224,9 @@ def handle_server(server, addr, MPV_PATH):
     def help():
         mpv.command("show-text", """sync-mpv keybindings
 
-Space           Toggle Play/Pause
+Space / Right Mousebutton              Toggle Play/Pause
+
+
 r                    resync clients
 +/-                 Speed up/down the video
 .                     Go one frame forwards
