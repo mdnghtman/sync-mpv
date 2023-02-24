@@ -162,6 +162,20 @@ def handle_server(server, addr, MPV_PATH):
                 print("READY - PATH OBSERVED")
                 ready_when_seeked(mpv, value)
 
+    @mpv.property_observer("paused-for-cache")
+    def observe_path(name, value):
+        print(name, value)
+        if value == True:
+
+            pause_video(mpv)
+            time_pos = mpv.command("get_property","time-pos")
+            print(time_pos)
+            send(client_socket, f"mpv skip {time_pos}")
+            send(client_socket, "paused-for-cache")
+            
+            ready_thread = threading.Thread(target=ready_when_seeked, args=(mpv, time_pos))
+            ready_thread.start()
+            
     # when space pressed inform other clients of play/pause
 
     @mpv.on_key_press("SPACE")
