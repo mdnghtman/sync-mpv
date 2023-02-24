@@ -163,7 +163,7 @@ def handle_server(server, addr, MPV_PATH):
                 ready_when_seeked(mpv, value)
 
     @mpv.property_observer("paused-for-cache")
-    def observe_path(name, value):
+    def resync_on_cache(name, value):
         print(name, value)
         if value == True:
 
