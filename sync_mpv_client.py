@@ -11,6 +11,7 @@ import errno
 import socket
 import hashlib
 import datetime
+import threading
 
 global connected
 global mpv
@@ -144,7 +145,8 @@ def handle_server(server, addr, MPV_PATH):
                     t_playback = mpv.command("get_property", "playback-time")
                     print (t_playback)
                     send(client_socket, f"mpv skip {t_playback}")
-                    ready_when_seeked(mpv, value)
+                    ready_thread = threading.Thread(target=ready_when_seeked, args=(mpv, value))
+                    ready_thread.start()
 
             t_playback = value
     
@@ -160,7 +162,8 @@ def handle_server(server, addr, MPV_PATH):
                 send(client_socket, f"mpv new {value}")
                 new_video(mpv, value)
                 print("READY - PATH OBSERVED")
-                ready_when_seeked(mpv, value)
+                ready_thread = threading.Thread(target=ready_when_seeked, args=(mpv, value))
+                ready_thread.start()
 
     @mpv.property_observer("paused-for-cache")
     def resync_on_cache(name, value):
@@ -175,7 +178,7 @@ def handle_server(server, addr, MPV_PATH):
             
             ready_thread = threading.Thread(target=ready_when_seeked, args=(mpv, time_pos))
             ready_thread.start()
-            
+
     # when space pressed inform other clients of play/pause
 
     @mpv.on_key_press("SPACE")
@@ -232,7 +235,10 @@ def handle_server(server, addr, MPV_PATH):
         print(time_pos)
         send(client_socket, f"mpv skip {time_pos}")
         send(client_socket, "resync")
-        ready_when_seeked(mpv, time_pos)
+
+        ready_thread = threading.Thread(target=ready_when_seeked, args=(mpv, time_pos))
+        ready_thread.start()
+
 
     @mpv.on_key_press("h")
     def help():
@@ -367,7 +373,14 @@ KP 5             Deactivate zoom and go back to normal view mode.
                     print ("Number of Clients: %s"%number_of_clients)
 
                 if msg == "resync":
-                    mpv.command("show-text",f"{user} resyncs.", "1500") 
+                    mpv.command("show-text",f"{user} resyncs.", "1500")
+                
+                if msg == "paused-for-cache":
+                    if user.endswith("s"):
+                        pass
+                    else:
+                        user = user+"s"
+                    mpv.command("show-text",f"{user} video paused for caching. Resyncing.", "5000") 
                     
                 if msg == "toggle play":
                     toggle_play(mpv)
@@ -383,14 +396,17 @@ KP 5             Deactivate zoom and go back to normal view mode.
 
                     mpv.command("set_property","playback-time",msg.split(" ")[2])
                     mpv.command("show-text",f"{user} skips to {converted_time}", "1500")
-               
-                    ready_when_seeked(mpv, t_playback)
+
+                    ready_thread = threading.Thread(target=ready_when_seeked, args=(mpv, t_playback))
+                    ready_thread.start()
 
                 if "mpv new" in msg:
                     videopath = msg[8:]
                     new_video(mpv, videopath)
                     mpv.command("show-text",f"{user}: {videopath}","1500")
-                    ready_when_seeked(mpv, videopath)
+                    
+                    ready_thread = threading.Thread(target=ready_when_seeked, args=(mpv, videopath))
+                    ready_thread.start()
 
                 if "userconnected" in msg:
                     mpv.command("show-text",f"{msg.split(' ')[1]} connected.","1500")
